@@ -7,27 +7,11 @@
 #include <LedControl.h>
 #include <LiquidCrystal.h>
 
-const int serialBaud = 9600;
-
-// Define pins used for matrix
-const byte dinPin = 12;
-const byte clockPin = 11;
-const byte loadPin = 10;
-
-// Define pins used for LCD
-const byte rs = 4;
-const byte en = 5;
-const byte d4 = 6;
-const byte d5 = 7;
-const byte d6 = 8;
-const byte d7 = 9;
-
-// Define pins used for joystick
-const int xPin = A0;
-const int yPin = A1;
+#include "MatrixDrawings.h"
+#include "Pins.h"
 
 // Initialize matrix
-LedControl lc = LedControl(dinPin, clockPin, loadPin, 1);
+LedControl matControl = LedControl(dinPin, clockPin, loadPin, 1);
 
 // Initialize LCD
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
@@ -56,6 +40,12 @@ bool matrixChanged = true;         // Flag to track if the matrix display needs 
 // LCD Variables
 
 
+// Game variables
+bool playing = false;
+const int startupTime = 2000;
+bool startGame = false;
+bool inMenu = false;
+
 // Map variables
 byte pathRow = 4;
 byte pathCol = 4;
@@ -67,42 +57,96 @@ unsigned long lastPlayerBlink = 0;
 const int playerBlinkInterval = 100;
 bool playerBlinkState = true;
 
+// Interrupt
+const unsigned long debounceInterval = 200;
+volatile unsigned long lastButtonPressTime = 0;
+volatile bool buttonPressed;
+
+void joystickButtonInterrupt() {
+  static unsigned long buttonPressTime = 0;
+  buttonPressTime = micros();
+
+  if (buttonPressTime - lastButtonPressTime > debounceInterval) {
+    buttonPressed = true;
+  }
+}
+
 void setup() {
+  pinMode(xPin, INPUT);
+  pinMode(yPin, INPUT);
+  pinMode(swPin, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(swPin), joystickButtonInterrupt, FALLING);
 
   // Start matrix
-  lc.shutdown(0, false);                 // turn off power saving, enables display
-  lc.setIntensity(0, matrixBrightness);  // sets brightness (0~15 possible values)
-  lc.clearDisplay(0);                    // clear screen
+  matControl.shutdown(0, false);                 // turn off power saving, enables display
+  matControl.setIntensity(0, matrixBrightness);  // sets brightness (0~15 possible values)
+  matControl.clearDisplay(0);                    // clear screen
 
   // Start LCD
   lcd.begin(16, 2);  // define the lcd with 2 rows and 16 columns
 
-  lcd.print(F("     Welcome    "));
+  lcd.print(F("   Welcome to   "));
+  lcd.setCursor(0, 1);
+  lcd.print(F("TheSearchOfIsaac"));
 
   Serial.begin(serialBaud);
 
   randomSeed(analogRead(0));
 
-  generateRooms();
+  displayImageInt64(matControl, smiley_face);
 
-  updateMatrix();
+  // generateRooms();
+
+  // updateMatrix();
 }
 
 void loop() {
 
+  if (millis() > startupTime && !startGame) {
+    startGame = true;
+  }
+
+  if (playing) {
+    gameRunning();
+  } else {
+    gamePaused();
+  }
+}
+
+void gamePaused() {
+  if (startGame && !inMenu) {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print(F(" < Start Game   "));
+    lcd.setCursor(0, 1);
+    lcd.print(F("   Enter Menu  "));
+    inMenu = true;
+  }
+
+  if (inMenu && buttonPressed) {
+    playing = true;
+
+    generateRooms();
+
+    inMenu = false;
+    buttonPressed = false;
+  }
+}
+
+void gameRunning() {
   // Check if the player can move (to not run the game too fast)
-  if (millis() - lastMoved > moveInterval) {
-    updatePlayerPosition();
-    lastMoved = millis();
-  }
+    if (millis() - lastMoved > moveInterval) {
+      updatePlayerPosition();
+      lastMoved = millis();
+    }
 
-  // Check if the matrix needs to be changed
-  if (matrixChanged == true) {
-    updateMatrix();
-    matrixChanged = false;
-  }
+    // Check if the matrix needs to be changed
+    if (matrixChanged == true) {
+      updateMatrix();
+      matrixChanged = false;
+    }
 
-  blinkPlayer();
+    blinkPlayer();
 }
 
 void generateRooms() {
@@ -129,7 +173,7 @@ void generateRooms() {
 void blinkPlayer() {
   if (millis() - lastPlayerBlink > playerBlinkInterval) {
     playerBlinkState = !playerBlinkState;
-    lc.setLed(0, xPos, yPos, playerBlinkState);
+    matControl.setLed(0, xPos, yPos, playerBlinkState);
 
     lastPlayerBlink = millis();
   }
@@ -139,7 +183,7 @@ void updateMatrix() {
   for (int row = 0; row < matrixSize; row++) {
     for (int col = 0; col < matrixSize; col++) {
       bool value = matrix[row + matrixSize * currentRoomX][col + matrixSize * currentRoomY] % 2;
-      lc.setLed(0, row, col, value);  // set each led individually
+      matControl.setLed(0, row, col, value);  // set each led individually
     }
   }
 }
