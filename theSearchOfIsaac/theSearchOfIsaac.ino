@@ -37,15 +37,6 @@ const byte moveInterval = 100;     // Timing variable to control the speed of LE
 unsigned long long lastMoved = 0;  // Tracks the last time the LED moved
 bool matrixChanged = true;         // Flag to track if the matrix display needs updating
 
-// LCD Variables
-
-
-// Game variables
-bool playing = false;
-const int startupTime = 2000;
-bool startGame = false;
-bool inMenu = false;
-
 // Map variables
 byte pathRow = 4;
 byte pathCol = 4;
@@ -56,6 +47,32 @@ byte currentRoomY = 0;
 unsigned long lastPlayerBlink = 0;
 const int playerBlinkInterval = 100;
 bool playerBlinkState = true;
+
+// LCD Variables
+
+
+// Game variables
+const byte treasure = 2;
+const byte modifier = 3;
+
+bool playing = false;
+const int startupTime = 2000;
+bool startGame = false;
+
+byte difficulty = 1;
+unsigned int shovels = 5;
+unsigned long gameRunningTime = 0;
+const int second = 1000;
+unsigned long lastSecond = 0;
+
+// Score variables
+unsigned int score = 0;
+const byte highScoreNr = 3;
+unsigned int highScores[highScoreNr] = { 0, 0, 0 };
+
+// Menu variables
+bool inMenu = false;
+
 
 // Interrupt
 const unsigned long debounceInterval = 200;
@@ -128,25 +145,57 @@ void gamePaused() {
 
     generateRooms();
 
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print((String) "Shovels: " + shovels);
+    lcd.setCursor(0, 1);
+    lcd.print((String) "Time: " + gameRunningTime);
+
+    lastSecond = millis();
+
     inMenu = false;
     buttonPressed = false;
   }
 }
 
+void printRunningGameInfo() {
+  lcd.setCursor(9, 0);
+  lcd.print(shovels);
+  lcd.setCursor(6, 1);
+  lcd.print(gameRunningTime);
+}
+
 void gameRunning() {
   // Check if the player can move (to not run the game too fast)
-    if (millis() - lastMoved > moveInterval) {
-      updatePlayerPosition();
-      lastMoved = millis();
-    }
+  if (millis() - lastMoved > moveInterval) {
+    updatePlayerPosition();
+    lastMoved = millis();
+  }
 
-    // Check if the matrix needs to be changed
-    if (matrixChanged == true) {
-      updateMatrix();
-      matrixChanged = false;
+  if (buttonPressed) {
+    if (matrix[xPos][yPos] == treasure) {
+      score += difficulty * modifier;
+    } else {
+      shovels--;
     }
+    buttonPressed = false;
+  }
 
-    blinkPlayer();
+  // Check if the matrix needs to be changed
+  if (matrixChanged == true) {
+    updateMatrix();
+    matrixChanged = false;
+  }
+
+  if (millis() - lastSecond > second) {
+    gameRunningTime++;
+    
+    lastSecond = millis();
+  }
+
+  printRunningGameInfo();
+
+  blinkPlayer();
 }
 
 void generateRooms() {
