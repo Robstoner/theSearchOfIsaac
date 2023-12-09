@@ -54,14 +54,13 @@ const byte treasure = 2;
 const byte modifier = 3;
 const byte startingShovels = 5;
 
+const int shovelTimeout = 500;  // Timeout to control the speed of using shovels
+const int moveTimeout = 1000;   // Timeout control the speed of player movement
+unsigned long lastPlayerMovedTime = 0;
 unsigned long lastShovelUsedTime = 0;
-const int shovelTimeout = 500;
-const int moveTimeout = 1000;  // Timing variable to control the speed of player movement
-unsigned long lastMoved = 0;   // Tracks the last time the player moved
 
-bool playing = false;
 const int startupTime = 2000;
-bool startupDone = false;
+bool playing = false;
 bool lostGame = false;
 
 byte difficulty = 1;
@@ -77,7 +76,6 @@ unsigned int highScores[highScoreNr] = { 0, 0, 0 };
 
 // Menu variables
 bool inMenu = false;
-
 
 // Interrupt
 const unsigned long debounceInterval = 200;
@@ -126,14 +124,12 @@ void setup() {
 
 void loop() {
 
-  if (millis() > startupTime && !startupDone) {
-    startupDone = true;
-  }
-
-  if (playing) {
-    gameRunning();
-  } else {
-    gamePaused();
+  if (millis() > startupTime) {
+    if (playing) {
+      gameRunning();
+    } else {
+      gamePaused();
+    }
   }
 }
 
@@ -159,7 +155,7 @@ void gamePaused() {
   }
 
   // Show start menu
-  if (startupDone && !inMenu) {
+  if (!inMenu) {
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print(F(" < Start Game   "));
@@ -201,9 +197,9 @@ void printRunningGameInfo() {
 
 void gameRunning() {
   // Check if the player can move (to not take too many inputs too fast)
-  if (millis() - lastMoved > moveTimeout) {
+  if (millis() - lastPlayerMovedTime > moveTimeout) {
     updatePlayerPosition();
-    lastMoved = millis();
+    lastPlayerMovedTime = millis();
   }
 
   showTreasureProximity();
@@ -264,27 +260,35 @@ void lostGameFunction() {
   lcd.setCursor(0, 1);
   lcd.print(score);
 
-  bool isHighScore = false;
   // Check if high score
+  if (checkHighScoreAndSave()) {
+    lcd.print(F(" HIGH SCORE"));
+    displayImageInt64(matControl, cup);
+  }
+}
+
+bool checkHighScoreAndSave() {
   for (int i = 0; i < highScoreNr; ++i) {
     Serial.println((String) "||" + i + " " + highScores[i]);
     if (score > highScores[i]) {
       for (int j = highScoreNr - 1; j > i; --j) {
         highScores[j] = highScores[j - 1];
       }
-      Serial.println((String) i + "  " + score + "   " + highScores[i]);
+
       highScores[i] = score;
-      isHighScore = true;
-      break;
+
+      return true;
     }
   }
 
-  if (isHighScore) {
-    lcd.print(F(" HIGH SCORE"));
-    displayImageInt64(matControl, cup);
-  }
+  return false;
 }
 
+/*
+ * green - on treasure
+ * blue - 1 off from treasure
+ * red - 2+ off treasure
+*/
 void showTreasureProximity() {
   byte treasureProximity = checkTreasureProximity();
 
@@ -303,9 +307,11 @@ void showTreasureProximity() {
   }
 }
 
-// 0 - On treasure
-// 1 - 1 away from treasure
-// 2 - 2 or more away from treasure
+/* 
+ * 0 - On treasure
+ * 1 - 1 away from treasure
+ * 2 - 2 or more away from treasure
+*/
 byte checkTreasureProximity() {
   // On treasure
   if (matrix[adjustedXPos][adjustedYPos] == 2) {
@@ -317,44 +323,6 @@ byte checkTreasureProximity() {
   }
 
   return 2;
-}
-
-void generateRooms() {
-  for (int row = 0; row < matrixSize * roomsX; row++) {
-    for (int col = 0; col < matrixSize * roomsY; col++) {
-      if ((row != 0 && col != 0 && row != (matrixSize * roomsX - 1) && col != (matrixSize * roomsY - 1))
-          && ((row % matrixSize) == pathRow || (col % matrixSize) == pathCol)) {
-        // Ignore path between rooms so player can at least move between them
-        matrix[row][col] = 0;
-      } else if ((row % matrixSize) == (matrixSize - 1) || (col % matrixSize) == (matrixSize - 1)
-                 || row % matrixSize == 0 || col % matrixSize == 0) {
-        // Ignore first and last row and col in each room as they are walls
-        matrix[row][col] = 1;
-      } else {
-        byte addition = random(3);
-
-        matrix[row][col] = addition;
-      }
-    }
-  }
-}
-
-void blinkPlayer() {
-  if (millis() - lastPlayerBlink > playerBlinkInterval) {
-    playerBlinkState = !playerBlinkState;
-    matControl.setLed(0, xPos, yPos, playerBlinkState);
-
-    lastPlayerBlink = millis();
-  }
-}
-
-void updateMatrix() {
-  for (int row = 0; row < matrixSize; row++) {
-    for (int col = 0; col < matrixSize; col++) {
-      bool value = matrix[row + matrixSize * currentRoomX][col + matrixSize * currentRoomY] % 2;
-      matControl.setLed(0, row, col, value);  // set each led individually
-    }
-  }
 }
 
 void updatePlayerPosition() {
@@ -429,5 +397,43 @@ void checkMovedRoom() {
   if (yPos == (pathCol) && xPos == matrixSize - 1) {
     currentRoomX++;
     xPos = 1;
+  }
+}
+
+void generateRooms() {
+  for (int row = 0; row < matrixSize * roomsX; row++) {
+    for (int col = 0; col < matrixSize * roomsY; col++) {
+      if ((row != 0 && col != 0 && row != (matrixSize * roomsX - 1) && col != (matrixSize * roomsY - 1))
+          && ((row % matrixSize) == pathRow || (col % matrixSize) == pathCol)) {
+        // Ignore path between rooms so player can at least move between them
+        matrix[row][col] = 0;
+      } else if ((row % matrixSize) == (matrixSize - 1) || (col % matrixSize) == (matrixSize - 1)
+                 || row % matrixSize == 0 || col % matrixSize == 0) {
+        // Ignore first and last row and col in each room as they are walls
+        matrix[row][col] = 1;
+      } else {
+        byte addition = random(3);
+
+        matrix[row][col] = addition;
+      }
+    }
+  }
+}
+
+void blinkPlayer() {
+  if (millis() - lastPlayerBlink > playerBlinkInterval) {
+    playerBlinkState = !playerBlinkState;
+    matControl.setLed(0, xPos, yPos, playerBlinkState);
+
+    lastPlayerBlink = millis();
+  }
+}
+
+void updateMatrix() {
+  for (int row = 0; row < matrixSize; row++) {
+    for (int col = 0; col < matrixSize; col++) {
+      bool value = matrix[row + matrixSize * currentRoomX][col + matrixSize * currentRoomY] % 2;
+      matControl.setLed(0, row, col, value);  // set each led individually
+    }
   }
 }
