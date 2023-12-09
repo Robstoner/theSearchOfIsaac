@@ -52,6 +52,7 @@ bool playerBlinkState = true;
 // Game variables
 const byte treasure = 2;
 const byte modifier = 3;
+const byte startingShovels = 5;
 
 unsigned long lastShovelUsedTime = 0;
 const int shovelTimeout = 500;
@@ -60,11 +61,11 @@ unsigned long lastMoved = 0;   // Tracks the last time the player moved
 
 bool playing = false;
 const int startupTime = 2000;
-bool startGame = false;
+bool startupDone = false;
 bool lostGame = false;
 
 byte difficulty = 1;
-int shovels = 5;
+int shovels = startingShovels;
 unsigned long gameRunningTime = 0;
 const int second = 1000;
 unsigned long lastSecond = 0;
@@ -125,8 +126,8 @@ void setup() {
 
 void loop() {
 
-  if (millis() > startupTime && !startGame) {
-    startGame = true;
+  if (millis() > startupTime && !startupDone) {
+    startupDone = true;
   }
 
   if (playing) {
@@ -138,10 +139,27 @@ void loop() {
 
 void gamePaused() {
   if (lostGame) {
-    return;
+    // Reset game / back to start menu
+    if (buttonPressed) {
+      lostGame = false;
+      displayImageInt64(matControl, smiley_face);
+
+      buttonPressed = false;
+
+      shovels = startingShovels;
+      gameRunningTime = 0;
+      score = 0;
+      xPos = 4;
+      yPos = 4;
+      adjustedXPos = xPos + matrixSize * currentRoomX;
+      adjustedYPos = yPos + matrixSize * currentRoomY;
+    } else {
+      return;
+    }
   }
 
-  if (startGame && !inMenu) {
+  // Show start menu
+  if (startupDone && !inMenu) {
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print(F(" < Start Game   "));
@@ -152,10 +170,12 @@ void gamePaused() {
     return;
   }
 
+  // Start game
   if (inMenu && buttonPressed) {
     playing = true;
 
     generateRooms();
+    updateMatrix();
 
     lcd.clear();
     lcd.setCursor(0, 0);
@@ -247,11 +267,12 @@ void lostGameFunction() {
   bool isHighScore = false;
   // Check if high score
   for (int i = 0; i < highScoreNr; ++i) {
-    if (score >= highScores[i]) {
-      for (int j = highScoreNr - 1; j > i; ++j) {
+    Serial.println((String) "||" + i + " " + highScores[i]);
+    if (score > highScores[i]) {
+      for (int j = highScoreNr - 1; j > i; --j) {
         highScores[j] = highScores[j - 1];
       }
-
+      Serial.println((String) i + "  " + score + "   " + highScores[i]);
       highScores[i] = score;
       isHighScore = true;
       break;
@@ -260,6 +281,7 @@ void lostGameFunction() {
 
   if (isHighScore) {
     lcd.print(F(" HIGH SCORE"));
+    displayImageInt64(matControl, cup);
   }
 }
 
@@ -303,7 +325,6 @@ void generateRooms() {
       if ((row != 0 && col != 0 && row != (matrixSize * roomsX - 1) && col != (matrixSize * roomsY - 1))
           && ((row % matrixSize) == pathRow || (col % matrixSize) == pathCol)) {
         // Ignore path between rooms so player can at least move between them
-        Serial.print((String)row + "  " + col + " | ");
         matrix[row][col] = 0;
       } else if ((row % matrixSize) == (matrixSize - 1) || (col % matrixSize) == (matrixSize - 1)
                  || row % matrixSize == 0 || col % matrixSize == 0) {
