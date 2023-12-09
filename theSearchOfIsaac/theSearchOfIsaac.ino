@@ -32,16 +32,14 @@ const byte roomsY = 2;      // nr of cols of rooms
 
 // Matrix representation
 byte matrix[matrixSize * roomsX][matrixSize * roomsY];
+bool matrixChanged = true;  // Flag to track if the matrix display needs updating
 
-const byte moveInterval = 100;     // Timing variable to control the speed of LED movement
-unsigned long long lastMoved = 0;  // Tracks the last time the LED moved
-bool matrixChanged = true;         // Flag to track if the matrix display needs updating
-
-// Map variables
 byte pathRow = 4;
 byte pathCol = 4;
 byte currentRoomX = 0;
 byte currentRoomY = 0;
+byte adjustedXPos = xPos + matrixSize * currentRoomX;
+byte adjustedYPos = yPos + matrixSize * currentRoomY;
 
 // Blink the player
 unsigned long lastPlayerBlink = 0;
@@ -55,12 +53,18 @@ bool playerBlinkState = true;
 const byte treasure = 2;
 const byte modifier = 3;
 
+unsigned long lastShovelUsedTime = 0;
+const int shovelTimeout = 500;
+const int moveTimeout = 1000;  // Timing variable to control the speed of player movement
+unsigned long lastMoved = 0;   // Tracks the last time the player moved
+
 bool playing = false;
 const int startupTime = 2000;
 bool startGame = false;
+bool lostGame = false;
 
 byte difficulty = 1;
-unsigned int shovels = 5;
+int shovels = 5;
 unsigned long gameRunningTime = 0;
 const int second = 1000;
 unsigned long lastSecond = 0;
@@ -89,10 +93,16 @@ void joystickButtonInterrupt() {
 }
 
 void setup() {
+  // Joystick controls and button interrupt
   pinMode(xPin, INPUT);
   pinMode(yPin, INPUT);
   pinMode(swPin, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(swPin), joystickButtonInterrupt, FALLING);
+
+  // RGB LED
+  pinMode(redLedPin, OUTPUT);
+  pinMode(greenLedPin, OUTPUT);
+  pinMode(blueLedPin, OUTPUT);
 
   // Start matrix
   matControl.shutdown(0, false);                 // turn off power saving, enables display
@@ -111,10 +121,6 @@ void setup() {
   randomSeed(analogRead(0));
 
   displayImageInt64(matControl, smiley_face);
-
-  // generateRooms();
-
-  // updateMatrix();
 }
 
 void loop() {
@@ -131,6 +137,10 @@ void loop() {
 }
 
 void gamePaused() {
+  if (lostGame) {
+    return;
+  }
+
   if (startGame && !inMenu) {
     lcd.clear();
     lcd.setCursor(0, 0);
@@ -138,6 +148,8 @@ void gamePaused() {
     lcd.setCursor(0, 1);
     lcd.print(F("   Enter Menu  "));
     inMenu = true;
+
+    return;
   }
 
   if (inMenu && buttonPressed) {
@@ -147,9 +159,9 @@ void gamePaused() {
 
     lcd.clear();
     lcd.setCursor(0, 0);
-    lcd.print((String) "Shovels: " + shovels);
+    lcd.print((String) "Shvl:" + shovels + " Score:" + score);
     lcd.setCursor(0, 1);
-    lcd.print((String) "Time: " + gameRunningTime);
+    lcd.print((String) "Time:" + gameRunningTime);
 
     lastSecond = millis();
 
@@ -159,26 +171,31 @@ void gamePaused() {
 }
 
 void printRunningGameInfo() {
-  lcd.setCursor(9, 0);
+  lcd.setCursor(5, 0);
   lcd.print(shovels);
-  lcd.setCursor(6, 1);
+  lcd.setCursor(13, 0);
+  lcd.print(score);
+  lcd.setCursor(5, 1);
   lcd.print(gameRunningTime);
 }
 
 void gameRunning() {
-  // Check if the player can move (to not run the game too fast)
-  if (millis() - lastMoved > moveInterval) {
+  // Check if the player can move (to not take too many inputs too fast)
+  if (millis() - lastMoved > moveTimeout) {
     updatePlayerPosition();
     lastMoved = millis();
   }
 
+  showTreasureProximity();
+
   if (buttonPressed) {
-    if (matrix[xPos][yPos] == treasure) {
-      score += difficulty * modifier;
-    } else {
-      shovels--;
-    }
+    mineTreasure();
+
     buttonPressed = false;
+  }
+
+  if (lostGame) {
+    return;
   }
 
   // Check if the matrix needs to be changed
@@ -189,13 +206,95 @@ void gameRunning() {
 
   if (millis() - lastSecond > second) {
     gameRunningTime++;
-    
+
     lastSecond = millis();
   }
 
   printRunningGameInfo();
 
   blinkPlayer();
+}
+
+void mineTreasure() {
+  if (millis() - lastShovelUsedTime > shovelTimeout) {
+    if (matrix[adjustedXPos][adjustedYPos] == treasure) {
+      score += difficulty * modifier;
+      matrix[adjustedXPos][adjustedYPos] = 0;
+    } else {
+      shovels--;
+
+      if (shovels < 0) {
+        lostGameFunction();
+      }
+    }
+
+    lastShovelUsedTime = millis();
+  }
+}
+
+void lostGameFunction() {
+  playing = false;
+  lostGame = true;
+
+  displayImageInt64(matControl, sad_face);
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print(F("You lost. Score:"));
+  lcd.setCursor(0, 1);
+  lcd.print(score);
+
+  bool isHighScore = false;
+  // Check if high score
+  for (int i = 0; i < highScoreNr; ++i) {
+    if (score >= highScores[i]) {
+      for (int j = highScoreNr - 1; j > i; ++j) {
+        highScores[j] = highScores[j - 1];
+      }
+
+      highScores[i] = score;
+      isHighScore = true;
+      break;
+    }
+  }
+
+  if (isHighScore) {
+    lcd.print(F(" HIGH SCORE"));
+  }
+}
+
+void showTreasureProximity() {
+  byte treasureProximity = checkTreasureProximity();
+
+  if (treasureProximity == 0) {
+    digitalWrite(greenLedPin, HIGH);
+    digitalWrite(blueLedPin, LOW);
+    digitalWrite(redLedPin, LOW);
+  } else if (treasureProximity == 1) {
+    digitalWrite(greenLedPin, LOW);
+    digitalWrite(blueLedPin, HIGH);
+    digitalWrite(redLedPin, LOW);
+  } else {
+    digitalWrite(greenLedPin, LOW);
+    digitalWrite(blueLedPin, LOW);
+    digitalWrite(redLedPin, HIGH);
+  }
+}
+
+// 0 - On treasure
+// 1 - 1 away from treasure
+// 2 - 2 or more away from treasure
+byte checkTreasureProximity() {
+  // On treasure
+  if (matrix[adjustedXPos][adjustedYPos] == 2) {
+    return 0;
+  }
+  // Within 1 block from treasure
+  if (matrix[adjustedXPos][adjustedYPos + 1] == 2 || matrix[adjustedXPos + 1][adjustedYPos + 1] == 2 || matrix[adjustedXPos + 1][adjustedYPos] == 2 || matrix[adjustedXPos + 1][adjustedYPos - 1] == 2 || matrix[adjustedXPos][adjustedYPos - 1] == 2 || matrix[adjustedXPos - 1][adjustedYPos - 1] == 2 || matrix[adjustedXPos - 1][adjustedYPos] == 2 || matrix[adjustedXPos - 1][adjustedYPos + 1] == 2) {
+    return 1;
+  }
+
+  return 2;
 }
 
 void generateRooms() {
@@ -279,14 +378,17 @@ void updatePlayerPosition() {
     } else {
 
       // Check if player is going to next room
-      moveRoom();
+      checkMovedRoom();
+
+      adjustedXPos = xPos + matrixSize * currentRoomX;
+      adjustedYPos = yPos + matrixSize * currentRoomY;
 
       matrixChanged = true;
     }
   }
 }
 
-void moveRoom() {
+void checkMovedRoom() {
   // Right
   if (xPos == (pathRow) && yPos == matrixSize - 1) {
     currentRoomY++;

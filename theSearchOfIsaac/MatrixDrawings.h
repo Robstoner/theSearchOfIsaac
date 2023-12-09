@@ -1,3 +1,4 @@
+#include <stdint.h>
 // from https://xantorohara.github.io/led-matrix-editor
 
 void displayImageInt64(LedControl lc, uint64_t image) {
@@ -10,6 +11,8 @@ void displayImageInt64(LedControl lc, uint64_t image) {
 }
 
 const uint64_t smiley_face = 0x003c7e4200242400;
+
+const uint64_t sad_face = 0x00427e3c00242400;
 
 const uint64_t cup = 0x3c18183c3c664242;
 
