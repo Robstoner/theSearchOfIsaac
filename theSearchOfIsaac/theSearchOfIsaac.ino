@@ -84,6 +84,10 @@ byte currentMenuOption = 1;
 const int menuMovementTimeout = 1000;
 unsigned long lastMenuMovementTime = 0;
 
+bool showingHighScores = false;
+unsigned long startedShowingHighScores = 0;
+const int showingHishScoresInterval = 5000;
+
 // Interrupt
 const unsigned long debounceInterval = 200;
 volatile unsigned long lastButtonPressTime = 0;
@@ -146,6 +150,17 @@ void loop() {
 }
 
 void gamePaused() {
+  if (showingHighScores) {
+
+    if ((millis() - startedShowingHighScores > showingHishScoresInterval) || buttonPressed) {
+      showingHighScores = false;
+
+      buttonPressed = false;
+      lcd.noAutoscroll();
+    } else {
+      return;
+    }
+  }
   if (lostGame) {
     // Reset game / back to start menu
     if (buttonPressed) {
@@ -163,13 +178,17 @@ void gamePaused() {
   }
   printMenu(currentMenu, currentMenuOption);
 
-  Serial.println((String) currentMenu + " " + currentMenuOption);
+  Serial.println((String)currentMenu + " " + currentMenuOption);
   // Choose option in menu
   if (inMenu && buttonPressed) {
     if (currentMenu == 1 && currentMenuOption == 1) {
       playing = true;
 
       startGame();
+    }
+
+    if (currentMenu == 2 && currentMenuOption == 1) {
+      showHighScores();
     }
 
     if (currentMenu == 2 && currentMenuOption == 2) {
@@ -365,6 +384,17 @@ bool checkHighScoreAndSave() {
 void resetHighScores() {
   for (int i = 0; i < highScoreNr; ++i) {
     highScores[i] = 0;
+  }
+}
+
+void showHighScores() {
+  showingHighScores = true;
+  startedShowingHighScores = millis();
+  lcd.clear();
+  lcd.autoscroll();
+  for (int i = 0; i < highScoreNr; ++i) {
+    lcd.print(highScores[i]);
+    lcd.print("    ");
   }
 }
 
