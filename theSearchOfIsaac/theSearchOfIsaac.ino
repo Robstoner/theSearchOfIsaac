@@ -46,8 +46,6 @@ unsigned long lastPlayerBlink = 0;
 const int playerBlinkInterval = 100;
 bool playerBlinkState = true;
 
-// LCD Variables
-
 
 // Game variables
 const byte treasure = 2;
@@ -59,6 +57,7 @@ const int moveTimeout = 1000;   // Timeout control the speed of player movement
 unsigned long lastPlayerMovedTime = 0;
 unsigned long lastShovelUsedTime = 0;
 
+bool startup = false;
 const int startupTime = 2000;
 bool playing = false;
 bool lostGame = false;
@@ -76,6 +75,14 @@ unsigned int highScores[highScoreNr] = { 0, 0, 0 };
 
 // Menu variables
 bool inMenu = false;
+
+const byte firstMenu = 1;
+const byte lastMenu = 2;
+byte currentMenu = 1;
+byte currentMenuOption = 1;
+
+const int menuMovementTimeout = 1000;
+unsigned long lastMenuMovementTime = 0;
 
 // Interrupt
 const unsigned long debounceInterval = 200;
@@ -125,6 +132,11 @@ void setup() {
 void loop() {
 
   if (millis() > startupTime) {
+    inMenu = true;
+    startup = true;
+  }
+
+  if (startup) {
     if (playing) {
       gameRunning();
     } else {
@@ -137,52 +149,88 @@ void gamePaused() {
   if (lostGame) {
     // Reset game / back to start menu
     if (buttonPressed) {
-      lostGame = false;
-      displayImageInt64(matControl, smiley_face);
 
-      buttonPressed = false;
-
-      shovels = startingShovels;
-      gameRunningTime = 0;
-      score = 0;
-      xPos = 4;
-      yPos = 4;
-      adjustedXPos = xPos + matrixSize * currentRoomX;
-      adjustedYPos = yPos + matrixSize * currentRoomY;
+      resetGame();
     } else {
       return;
     }
   }
 
-  // Show start menu
-  if (!inMenu) {
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print(F(" < Start Game   "));
-    lcd.setCursor(0, 1);
-    lcd.print(F("   Enter Menu  "));
-    inMenu = true;
+  if (millis() - lastMenuMovementTime > menuMovementTimeout) {
+    readMenuMovement();
 
-    return;
+    lastMenuMovementTime = millis();
   }
+  printMenu(currentMenu, currentMenuOption);
 
-  // Start game
+  Serial.println((String) currentMenu + " " + currentMenuOption);
+  // Choose option in menu
   if (inMenu && buttonPressed) {
-    playing = true;
+    if (currentMenu == 1 && currentMenuOption == 1) {
+      playing = true;
 
-    generateRooms();
-    updateMatrix();
+      startGame();
+    }
 
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print((String) "Shvl:" + shovels + " Score:" + score);
-    lcd.setCursor(0, 1);
-    lcd.print((String) "Time:" + gameRunningTime);
-
-    lastSecond = millis();
+    if (currentMenu == 2 && currentMenuOption == 2) {
+      resetHighScores();
+    }
 
     inMenu = false;
     buttonPressed = false;
+  }
+}
+
+void printMenu(byte menu, byte option) {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print(F("<"));
+  lcd.setCursor(15, 0);
+  lcd.print(F(">"));
+
+  switch (menu) {
+    case 1:
+      printFirstMenu();
+
+      break;
+    case 2:
+      printSecondMenu(option);
+
+      break;
+    default:
+      break;
+  }
+}
+
+// Start Menu
+void printFirstMenu() {
+  displayImageInt64(matControl, smiley_face);
+  lcd.setCursor(1, 0);
+  lcd.print(F(" Next  Prev "));
+  lcd.setCursor(0, 1);
+  lcd.print(F(" > Start Game   "));
+}
+
+// Leaderboard
+void printSecondMenu(byte option) {
+  displayImageInt64(matControl, cup);
+  lcd.setCursor(1, 0);
+  lcd.print(F(" Leaderboard  "));
+
+  if (option < 2) {
+    lcd.setCursor(0, 1);
+    lcd.print(F("↓"));
+  }
+  if (option > 1) {
+    lcd.setCursor(15, 1);
+    lcd.print(F("↑"));
+  }
+
+  lcd.setCursor(1, 1);
+  if (option == 1) {
+    lcd.print(F("See top player"));
+  } else if (option == 2) {
+    lcd.print(F("    Reset     "));
   }
 }
 
@@ -204,6 +252,7 @@ void gameRunning() {
 
   showTreasureProximity();
 
+  // Try to use the shovel on the point you are on
   if (buttonPressed) {
     mineTreasure();
 
@@ -220,6 +269,7 @@ void gameRunning() {
     matrixChanged = false;
   }
 
+  // Update the timer
   if (millis() - lastSecond > second) {
     gameRunningTime++;
 
@@ -246,6 +296,34 @@ void mineTreasure() {
 
     lastShovelUsedTime = millis();
   }
+}
+
+void startGame() {
+  generateRooms();
+  updateMatrix();
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print((String) "Shvl:" + shovels + " Score:" + score);
+  lcd.setCursor(0, 1);
+  lcd.print((String) "Time:" + gameRunningTime);
+
+  lastSecond = millis();
+}
+
+void resetGame() {
+  lostGame = false;
+  displayImageInt64(matControl, smiley_face);
+
+  buttonPressed = false;
+
+  shovels = startingShovels;
+  gameRunningTime = 0;
+  score = 0;
+  xPos = 4;
+  yPos = 4;
+  adjustedXPos = xPos + matrixSize * currentRoomX;
+  adjustedYPos = yPos + matrixSize * currentRoomY;
 }
 
 void lostGameFunction() {
@@ -282,6 +360,12 @@ bool checkHighScoreAndSave() {
   }
 
   return false;
+}
+
+void resetHighScores() {
+  for (int i = 0; i < highScoreNr; ++i) {
+    highScores[i] = 0;
+  }
 }
 
 /*
@@ -325,6 +409,76 @@ byte checkTreasureProximity() {
   return 2;
 }
 
+bool readMenuMovement() {
+  int xValue = analogRead(xPin);
+  int yValue = analogRead(yPin);
+
+  if (xValue < minThreshold) {
+    lowerMenuOption();
+
+    return true;
+  }
+
+  if (xValue > maxThreshold) {
+    upperMenuOption();
+
+    return true;
+  }
+
+  if (yValue < minThreshold) {
+    leftMenu();
+
+    return true;
+  }
+
+  if (yValue > maxThreshold) {
+    rightMenu();
+
+    return true;
+  }
+
+  return false;
+}
+
+void lowerMenuOption() {
+  if (currentMenuOption > 1) {
+    currentMenuOption--;
+  }
+}
+
+void upperMenuOption() {
+  currentMenuOption++;
+
+  switch (currentMenu) {
+    case 1:
+      if (currentMenuOption > 1) {
+        currentMenuOption = 1;
+      }
+    case 2:
+      if (currentMenuOption > 3) {
+        currentMenuOption = 3;
+      }
+  }
+}
+
+void leftMenu() {
+  currentMenu--;
+  currentMenuOption = 1;
+
+  if (currentMenu < firstMenu) {
+    currentMenu = lastMenu;
+  }
+}
+
+void rightMenu() {
+  currentMenu++;
+  currentMenuOption = 1;
+
+  if (currentMenu > lastMenu) {
+    currentMenu = firstMenu;
+  }
+}
+
 void updatePlayerPosition() {
   int xValue = analogRead(xPin);
   int yValue = analogRead(yPin);
@@ -334,11 +488,13 @@ void updatePlayerPosition() {
   yLastPos = yPos;
 
   // Update xPos based on joystick movement (X-axis)
+  // Down
   if (xValue < minThreshold) {
     if (xPos > 0) {
       xPos--;
     }
   }
+  // Up
   if (xValue > maxThreshold) {
     if (xPos < matrixSize - 1) {
       xPos++;
@@ -346,11 +502,13 @@ void updatePlayerPosition() {
   }
 
   // Update yPos based on joystick movement (Y-axis)
+  // Left
   if (yValue > maxThreshold) {
     if (yPos > 0) {
       yPos--;
     }
   }
+  // Right
   if (yValue < minThreshold) {
     if (yPos < matrixSize - 1) {
       yPos++;
