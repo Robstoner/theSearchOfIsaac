@@ -7,14 +7,10 @@
 #include <LedControl.h>
 #include <LiquidCrystal.h>
 
-#include "MatrixDrawings.h"
 #include "Pins.h"
 
 // Initialize matrix
 LedControl matControl = LedControl(dinPin, clockPin, loadPin, 1);
-
-// Initialize LCD
-LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 
 // Joystick variables
 byte xPos = 4;
@@ -53,7 +49,7 @@ const byte modifier = 3;
 const byte startingShovels = 5;
 
 const int shovelTimeout = 500;  // Timeout to control the speed of using shovels
-const int moveTimeout = 1000;   // Timeout control the speed of player movement
+const int moveTimeout = 600;   // Timeout control the speed of player movement
 unsigned long lastPlayerMovedTime = 0;
 unsigned long lastShovelUsedTime = 0;
 
@@ -76,8 +72,8 @@ unsigned int highScores[highScoreNr] = { 0, 0, 0 };
 // Menu variables
 bool inMenu = false;
 
-const byte firstMenu = 1;
-const byte lastMenu = 2;
+const int firstMenu = 1;
+const int lastMenu = 4;
 byte currentMenu = 1;
 byte currentMenuOption = 1;
 
@@ -89,9 +85,12 @@ unsigned long startedShowingHighScores = 0;
 const int showingHishScoresInterval = 5000;
 
 // Interrupt
-const unsigned long debounceInterval = 200;
+const unsigned long debounceInterval = 400;
 volatile unsigned long lastButtonPressTime = 0;
 volatile bool buttonPressed;
+
+#include "MatrixDrawings.h"
+#include "Menu.h"
 
 void joystickButtonInterrupt() {
   static unsigned long buttonPressTime = 0;
@@ -120,6 +119,9 @@ void setup() {
   matControl.clearDisplay(0);                    // clear screen
 
   // Start LCD
+  lcd.createChar(0, arrowUp);
+  lcd.createChar(1, arrowDown);
+
   lcd.begin(16, 2);  // define the lcd with 2 rows and 16 columns
 
   lcd.print(F("   Welcome to   "));
@@ -135,9 +137,10 @@ void setup() {
 
 void loop() {
 
-  if (millis() > startupTime) {
+  if (millis() > startupTime && !startup) {
     inMenu = true;
     startup = true;
+    printMenu(currentMenu, currentMenuOption);
   }
 
   if (startup) {
@@ -154,13 +157,15 @@ void gamePaused() {
 
     if ((millis() - startedShowingHighScores > showingHishScoresInterval) || buttonPressed) {
       showingHighScores = false;
+      printMenu(currentMenu, currentMenuOption);
 
+      inMenu = true;
       buttonPressed = false;
-      lcd.noAutoscroll();
     } else {
       return;
     }
   }
+
   if (lostGame) {
     // Reset game / back to start menu
     if (buttonPressed) {
@@ -172,94 +177,18 @@ void gamePaused() {
   }
 
   if (millis() - lastMenuMovementTime > menuMovementTimeout) {
-    readMenuMovement();
+    if (readMenuMovement()) {
 
-    lastMenuMovementTime = millis();
+      printMenu(currentMenu, currentMenuOption);
+    }
   }
-  printMenu(currentMenu, currentMenuOption);
 
-  Serial.println((String)currentMenu + " " + currentMenuOption);
   // Choose option in menu
   if (inMenu && buttonPressed) {
-    if (currentMenu == 1 && currentMenuOption == 1) {
-      playing = true;
+    chooseMenuOption();
 
-      startGame();
-    }
-
-    if (currentMenu == 2 && currentMenuOption == 1) {
-      showHighScores();
-    }
-
-    if (currentMenu == 2 && currentMenuOption == 2) {
-      resetHighScores();
-    }
-
-    inMenu = false;
     buttonPressed = false;
   }
-}
-
-void printMenu(byte menu, byte option) {
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print(F("<"));
-  lcd.setCursor(15, 0);
-  lcd.print(F(">"));
-
-  switch (menu) {
-    case 1:
-      printFirstMenu();
-
-      break;
-    case 2:
-      printSecondMenu(option);
-
-      break;
-    default:
-      break;
-  }
-}
-
-// Start Menu
-void printFirstMenu() {
-  displayImageInt64(matControl, smiley_face);
-  lcd.setCursor(1, 0);
-  lcd.print(F(" Next  Prev "));
-  lcd.setCursor(0, 1);
-  lcd.print(F(" > Start Game   "));
-}
-
-// Leaderboard
-void printSecondMenu(byte option) {
-  displayImageInt64(matControl, cup);
-  lcd.setCursor(1, 0);
-  lcd.print(F(" Leaderboard  "));
-
-  if (option < 2) {
-    lcd.setCursor(0, 1);
-    lcd.print(F("↓"));
-  }
-  if (option > 1) {
-    lcd.setCursor(15, 1);
-    lcd.print(F("↑"));
-  }
-
-  lcd.setCursor(1, 1);
-  if (option == 1) {
-    lcd.print(F("See top player"));
-  } else if (option == 2) {
-    lcd.print(F("    Reset     "));
-  }
-}
-
-void printRunningGameInfo() {
-  lcd.setCursor(5, 0);
-  lcd.print(shovels);
-  lcd.setCursor(13, 0);
-  lcd.print(score);
-  lcd.setCursor(5, 1);
-  lcd.print(gameRunningTime);
 }
 
 void gameRunning() {
@@ -300,6 +229,60 @@ void gameRunning() {
   blinkPlayer();
 }
 
+void printMenu(byte menu, byte option) {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print(F("<"));
+  lcd.setCursor(15, 0);
+  lcd.print(F(">"));
+
+  switch (menu) {
+    case 1:
+      printStartMenu();
+
+      break;
+    case 2:
+      printLeaderboardMenu(option);
+
+      break;
+    case 3:
+      printSettingsMenu(option);
+
+      break;
+    case 4:
+      printAboutMenu();
+
+      break;
+    default:
+      break;
+  }
+}
+
+void chooseMenuOption() {
+  if (currentMenu == 1 && currentMenuOption == 1) {
+    playing = true;
+
+    startGame();
+    inMenu = false;
+  }
+
+  if (currentMenu == 2) {
+    if (currentMenuOption == 1) {
+      showHighScores();
+      inMenu = false;
+    }
+    if (currentMenuOption == 2) {
+      resetHighScores();
+    }
+  }
+
+  if (currentMenu == 3) {
+  }
+
+  if (currentMenu == 4) {
+  }
+}
+
 void mineTreasure() {
   if (millis() - lastShovelUsedTime > shovelTimeout) {
     if (matrix[adjustedXPos][adjustedYPos] == treasure) {
@@ -336,6 +319,7 @@ void resetGame() {
 
   buttonPressed = false;
 
+  inMenu = true;
   shovels = startingShovels;
   gameRunningTime = 0;
   score = 0;
@@ -343,6 +327,10 @@ void resetGame() {
   yPos = 4;
   adjustedXPos = xPos + matrixSize * currentRoomX;
   adjustedYPos = yPos + matrixSize * currentRoomY;
+
+  currentMenu = firstMenu;
+  currentMenuOption = 1;
+  printMenu(currentMenu, currentMenuOption);
 }
 
 void lostGameFunction() {
@@ -391,7 +379,9 @@ void showHighScores() {
   showingHighScores = true;
   startedShowingHighScores = millis();
   lcd.clear();
-  lcd.autoscroll();
+
+
+  lcd.setCursor(0, 1);
   for (int i = 0; i < highScoreNr; ++i) {
     lcd.print(highScores[i]);
     lcd.print("    ");
@@ -437,76 +427,6 @@ byte checkTreasureProximity() {
   }
 
   return 2;
-}
-
-bool readMenuMovement() {
-  int xValue = analogRead(xPin);
-  int yValue = analogRead(yPin);
-
-  if (xValue < minThreshold) {
-    lowerMenuOption();
-
-    return true;
-  }
-
-  if (xValue > maxThreshold) {
-    upperMenuOption();
-
-    return true;
-  }
-
-  if (yValue < minThreshold) {
-    leftMenu();
-
-    return true;
-  }
-
-  if (yValue > maxThreshold) {
-    rightMenu();
-
-    return true;
-  }
-
-  return false;
-}
-
-void lowerMenuOption() {
-  if (currentMenuOption > 1) {
-    currentMenuOption--;
-  }
-}
-
-void upperMenuOption() {
-  currentMenuOption++;
-
-  switch (currentMenu) {
-    case 1:
-      if (currentMenuOption > 1) {
-        currentMenuOption = 1;
-      }
-    case 2:
-      if (currentMenuOption > 3) {
-        currentMenuOption = 3;
-      }
-  }
-}
-
-void leftMenu() {
-  currentMenu--;
-  currentMenuOption = 1;
-
-  if (currentMenu < firstMenu) {
-    currentMenu = lastMenu;
-  }
-}
-
-void rightMenu() {
-  currentMenu++;
-  currentMenuOption = 1;
-
-  if (currentMenu > lastMenu) {
-    currentMenu = firstMenu;
-  }
 }
 
 void updatePlayerPosition() {
