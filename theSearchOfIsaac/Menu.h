@@ -80,7 +80,7 @@ void printSettingsMenu(int option) {
   lcd.setCursor(1, 0);
   lcd.print(F("   Settings   "));
 
-  printArrows(option, 1, 4);
+  printArrows(option, 1, 3);
 
   lcd.setCursor(1, 1);
   switch (option) {
@@ -91,9 +91,6 @@ void printSettingsMenu(int option) {
       lcd.print(F("Mat brightness"));
       break;
     case 3:
-      lcd.print(F(" Enter a name "));
-      break;
-    case 4:
       lcd.print(F(" Sounds toggle"));
       break;
     default:

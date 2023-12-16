@@ -12,6 +12,7 @@ const byte d4 = 6;
 const byte d5 = 7;
 const byte d6 = 8;
 const byte d7 = 9;
+const byte LCDBrightnessPin = A5;
 
 // Define pins used for joystick
 const int xPin = A0;

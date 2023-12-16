@@ -6,6 +6,7 @@
 // Import required libraries for matrix and LCD
 #include <LedControl.h>
 #include <LiquidCrystal.h>
+#include <EEPROM.h>
 
 #include "Pins.h"
 
@@ -20,7 +21,17 @@ byte yLastPos = 4;
 const int minThreshold = 200;
 const int maxThreshold = 600;
 
+byte LCDBrightnessPosition = 180;
+byte LCDBrightness = 100;
+
+byte soundsTogglePosition = 200;
+bool soundsToggle = false;
+
+const int choosingTimeout = 200;
+unsigned long lastChoosingTime = 0;
+
 // Matrix variables
+byte matrixBrightnessPosition = 190;
 byte matrixBrightness = 2;
 const byte matrixSize = 8;  // nr of rows and columns the matrix has
 const byte roomsX = 2;      // nr of rows of rooms
@@ -42,14 +53,13 @@ unsigned long lastPlayerBlink = 0;
 const int playerBlinkInterval = 100;
 bool playerBlinkState = true;
 
-
 // Game variables
 const byte treasure = 2;
 const byte modifier = 3;
 const byte startingShovels = 5;
 
 const int shovelTimeout = 500;  // Timeout to control the speed of using shovels
-const int moveTimeout = 600;   // Timeout control the speed of player movement
+const int moveTimeout = 600;    // Timeout control the speed of player movement
 unsigned long lastPlayerMovedTime = 0;
 unsigned long lastShovelUsedTime = 0;
 
@@ -57,6 +67,11 @@ bool startup = false;
 const int startupTime = 2000;
 bool playing = false;
 bool lostGame = false;
+bool wonGame = false;
+
+bool choosingDifficulty = false;
+bool choosingMatrixBrightness = false;
+bool choosingLCDBrightness = false;
 
 byte difficulty = 1;
 int shovels = startingShovels;
@@ -113,6 +128,13 @@ void setup() {
   pinMode(greenLedPin, OUTPUT);
   pinMode(blueLedPin, OUTPUT);
 
+  for (int i = 0; i < highScoreNr; ++i) {
+    EEPROM.get(10 * i, highScores[i]);
+  }
+
+  EEPROM.get(matrixBrightnessPosition, matrixBrightness);
+  EEPROM.get(LCDBrightnessPosition, LCDBrightness);
+
   // Start matrix
   matControl.shutdown(0, false);                 // turn off power saving, enables display
   matControl.setIntensity(0, matrixBrightness);  // sets brightness (0~15 possible values)
@@ -123,6 +145,8 @@ void setup() {
   lcd.createChar(1, arrowDown);
 
   lcd.begin(16, 2);  // define the lcd with 2 rows and 16 columns
+  digitalWrite(LCDBrightnessPin, LCDBrightness);
+
 
   lcd.print(F("   Welcome to   "));
   lcd.setCursor(0, 1);
@@ -153,6 +177,63 @@ void loop() {
 }
 
 void gamePaused() {
+  if (choosingDifficulty) {
+    if (millis() - lastMenuMovementTime > menuMovementTimeout) {
+      if (chooseDifficulty()) {
+        lcd.setCursor(12, 0);
+        lcd.print(difficulty);
+      }
+    }
+
+
+    if (buttonPressed) {
+      playing = true;
+      choosingDifficulty = false;
+
+      startGame();
+      inMenu = false;
+      buttonPressed = false;
+    }
+
+    return;
+  }
+
+  if (choosingMatrixBrightness) {
+    if (millis() - lastChoosingTime > choosingTimeout) {
+      if (chooseMatrixBrightness()) {
+        lcd.setCursor(0, 1);
+        lcd.print(matrixBrightness);
+      }
+    }
+
+    if (buttonPressed) {
+      choosingMatrixBrightness = false;
+      printMenu(currentMenu, currentMenuOption);
+
+      buttonPressed = false;
+    }
+
+    return;
+  }
+
+  if (choosingLCDBrightness) {
+    if (millis() - lastChoosingTime > choosingTimeout) {
+      if (chooseLCDBrightness()) {
+        lcd.setCursor(0, 1);
+        lcd.print(LCDBrightness);
+      }
+    }
+
+    if (buttonPressed) {
+      choosingLCDBrightness = false;
+      printMenu(currentMenu, currentMenuOption);
+
+      buttonPressed = false;
+    }
+
+    return;
+  }
+
   if (showingHighScores) {
 
     if ((millis() - startedShowingHighScores > showingHishScoresInterval) || buttonPressed) {
@@ -166,11 +247,15 @@ void gamePaused() {
     }
   }
 
-  if (lostGame) {
+  if (lostGame || wonGame) {
     // Reset game / back to start menu
-    if (buttonPressed) {
+    if (millis() - lastMenuMovementTime > menuMovementTimeout) {
 
-      resetGame();
+      if (buttonPressed) {
+
+        resetGame();
+        lastMenuMovementTime = millis();
+      }
     } else {
       return;
     }
@@ -260,10 +345,13 @@ void printMenu(byte menu, byte option) {
 
 void chooseMenuOption() {
   if (currentMenu == 1 && currentMenuOption == 1) {
-    playing = true;
-
-    startGame();
-    inMenu = false;
+    choosingDifficulty = true;
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print(F("Difficulty: "));
+    lcd.print(difficulty);
+    lcd.setCursor(0, 1);
+    lcd.print(F("Joystick up/down"));
   }
 
   if (currentMenu == 2) {
@@ -277,10 +365,46 @@ void chooseMenuOption() {
   }
 
   if (currentMenu == 3) {
+    switch (currentMenuOption) {
+      case 1:
+        choosingLCDBrightness = true;
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print(F("LCD Brightness: "));
+        lcd.setCursor(0, 1);
+        lcd.print(LCDBrightness);
+
+        break;
+      case 2:
+        choosingMatrixBrightness = true;
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print(F("Mat Brightness: "));
+        lcd.setCursor(0, 1);
+        lcd.print(matrixBrightness);
+
+        break;
+      case 3:
+        soundsToggle = !soundsToggle;
+
+        break;
+    }
   }
 
   if (currentMenu == 4) {
   }
+}
+
+bool checkRemainingTreasures() {
+  for (int row = 1; row < matrixSize * roomsX - 1; row++) {
+    for (int col = 1; col < matrixSize * roomsY - 1; col++) {
+      if (matrix[row][col] == 2) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 void mineTreasure() {
@@ -288,6 +412,11 @@ void mineTreasure() {
     if (matrix[adjustedXPos][adjustedYPos] == treasure) {
       score += difficulty * modifier;
       matrix[adjustedXPos][adjustedYPos] = 0;
+
+      if (!checkRemainingTreasures()) {
+
+        wonGameFunction();
+      }
     } else {
       shovels--;
 
@@ -315,6 +444,7 @@ void startGame() {
 
 void resetGame() {
   lostGame = false;
+  wonGame = false;
   displayImageInt64(matControl, smiley_face);
 
   buttonPressed = false;
@@ -333,10 +463,28 @@ void resetGame() {
   printMenu(currentMenu, currentMenuOption);
 }
 
-void lostGameFunction() {
-  playing = false;
-  lostGame = true;
+void wonGameFunction() {
+  displayImageInt64(matControl, cup);
 
+  score += difficulty * (5000 / gameRunningTime);
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print(F("You win! Score: "));
+  lcd.setCursor(0, 1);
+  lcd.print(score);
+
+  if (checkHighScoreAndSave()) {
+    lcd.print(F(" HIGH SCORE"));
+    displayImageInt64(matControl, cup);
+  }
+
+  lastMenuMovementTime = millis();
+  wonGame = true;
+  playing = false;
+}
+
+void lostGameFunction() {
   displayImageInt64(matControl, sad_face);
 
   lcd.clear();
@@ -350,16 +498,20 @@ void lostGameFunction() {
     lcd.print(F(" HIGH SCORE"));
     displayImageInt64(matControl, cup);
   }
+
+  lastMenuMovementTime = millis();
+  playing = false;
+  lostGame = true;
 }
 
 bool checkHighScoreAndSave() {
   for (int i = 0; i < highScoreNr; ++i) {
-    Serial.println((String) "||" + i + " " + highScores[i]);
     if (score > highScores[i]) {
       for (int j = highScoreNr - 1; j > i; --j) {
         highScores[j] = highScores[j - 1];
       }
 
+      EEPROM.put(10 * i, score);
       highScores[i] = score;
 
       return true;
@@ -371,6 +523,7 @@ bool checkHighScoreAndSave() {
 
 void resetHighScores() {
   for (int i = 0; i < highScoreNr; ++i) {
+    EEPROM.put(10 * i, 0);
     highScores[i] = 0;
   }
 }
@@ -386,6 +539,92 @@ void showHighScores() {
     lcd.print(highScores[i]);
     lcd.print("    ");
   }
+}
+
+bool chooseDifficulty() {
+  int xValue = analogRead(xPin);
+
+  if (xValue < minThreshold) {
+
+    if (difficulty > 1) {
+      difficulty--;
+
+      lastMenuMovementTime = millis();
+      return true;
+    }
+  }
+
+  if (xValue > maxThreshold) {
+
+    if (difficulty < 3) {
+      difficulty++;
+
+      lastMenuMovementTime = millis();
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool chooseLCDBrightness() {
+  int xValue = analogRead(xPin);
+
+  if (xValue < minThreshold) {
+
+    if (LCDBrightness > 0) {
+      LCDBrightness--;
+      EEPROM.put(LCDBrightnessPosition, LCDBrightness);
+      digitalWrite(LCDBrightnessPin, LCDBrightness);
+
+      lastChoosingTime = millis();
+      return true;
+    }
+  }
+
+  if (xValue > maxThreshold) {
+
+    if (LCDBrightness < 255) {
+      LCDBrightness++;
+      EEPROM.put(LCDBrightnessPosition, LCDBrightness);
+      digitalWrite(LCDBrightnessPin, LCDBrightness);
+
+      lastChoosingTime = millis();
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool chooseMatrixBrightness() {
+  int xValue = analogRead(xPin);
+
+  if (xValue < minThreshold) {
+
+    if (matrixBrightness > 0) {
+      matrixBrightness--;
+      EEPROM.put(matrixBrightnessPosition, matrixBrightness);
+      matControl.setIntensity(0, matrixBrightness);
+
+      lastChoosingTime = millis();
+      return true;
+    }
+  }
+
+  if (xValue > maxThreshold) {
+
+    if (matrixBrightness < 15) {
+      matrixBrightness++;
+      EEPROM.put(matrixBrightnessPosition, matrixBrightness);
+      matControl.setIntensity(0, matrixBrightness);
+
+      lastChoosingTime = millis();
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /*
