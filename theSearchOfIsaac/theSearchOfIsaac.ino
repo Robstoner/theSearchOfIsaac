@@ -1,5 +1,12 @@
 /*
-
+ * A game played on a 8x8 matrix, with multiple rooms, controlled with a joystick,
+ * accompanied by a menu on a 16x2 display, also controlled by a joystick.
+ *
+ * Created 9/12/2023
+ * By Schmidt Robert
+ *
+ * Updated 18/12/2023
+ * By Schmidt Robert
 */
 
 
