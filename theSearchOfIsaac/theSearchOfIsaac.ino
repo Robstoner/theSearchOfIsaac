@@ -13,6 +13,7 @@
 // Import required libraries for matrix and LCD
 #include <LedControl.h>
 #include <LiquidCrystal.h>
+// Import library required for EEPROM (to save persistent data)
 #include <EEPROM.h>
 
 #include "Pins.h"
