@@ -1,23 +1,23 @@
 byte arrowUp[8] = {
-	0b00000,
-	0b00100,
-	0b01110,
-	0b10101,
-	0b00100,
-	0b00100,
-	0b00100,
-	0b00000
+  0b00000,
+  0b00100,
+  0b01110,
+  0b10101,
+  0b00100,
+  0b00100,
+  0b00100,
+  0b00000
 };
 
 byte arrowDown[8] = {
-	0b00000,
-	0b00100,
-	0b00100,
-	0b00100,
-	0b10101,
-	0b01110,
-	0b00100,
-	0b00000
+  0b00000,
+  0b00100,
+  0b00100,
+  0b00100,
+  0b10101,
+  0b01110,
+  0b00100,
+  0b00000
 };
 
 // Initialize LCD
@@ -91,7 +91,13 @@ void printSettingsMenu(int option) {
       lcd.print(F("Mat brightness"));
       break;
     case 3:
-      lcd.print(F(" Sounds toggle"));
+      lcd.print(F(" Sounds "));
+      if (soundsToggle) {
+        lcd.print(F("off"));
+      } else {
+        lcd.print(F("on"));
+      }
+
       break;
     default:
       break;
@@ -99,49 +105,95 @@ void printSettingsMenu(int option) {
 }
 
 // About the game
-void printAboutMenu() {
+void printAboutMenu(byte option) {
   displayImageInt64(matControl, hammer);
-  lcd.setCursor(1, 0);
-  lcd.print(F("    About     "));
-}
 
-void lowerMenuOption() {
-  if (currentMenuOption > 1) {
-    currentMenuOption--;
+  switch (option) {
+    case 1:
+      lcd.setCursor(1, 0);
+      lcd.print(F("    About     "));
+      lcd.setCursor(0, 1);
+      lcd.print(F("TheSearchOfIsaac"));
+      break;
+    case 2:
+      lcd.setCursor(1, 0);
+      lcd.print(F("    Creator   "));
+      lcd.setCursor(0, 1);
+      lcd.print(F("    Robstoner   "));
+      break;
+    case 3:
+      lcd.setCursor(1, 0);
+      lcd.print(F("     Link     "));
+      lcd.setCursor(0, 1);
+      lcd.print(F("   t.ly/oiQ77   "));
+    default:
+      break;
   }
 }
 
-void upperMenuOption() {
-  currentMenuOption++;
+bool lowerMenuOption() {
+  if (currentMenuOption > 1) {
+    currentMenuOption--;
+    return true;
+  }
+
+  return false;
+}
+
+bool upperMenuOption() {
 
   switch (currentMenu) {
     case 1:
-      if (currentMenuOption > 1) {
-        currentMenuOption = 1;
+      if (currentMenuOption < 1) {
+        currentMenuOption++;
+        return true;
       }
+      break;
     case 2:
-      if (currentMenuOption > 2) {
-        currentMenuOption = 2;
+      if (currentMenuOption < 2) {
+        currentMenuOption++;
+        return true;
       }
+      break;
+    case 3:
+      if (currentMenuOption < 3) {
+        currentMenuOption++;
+        return true;
+      }
+      break;
+    case 4:
+      if (currentMenuOption < 3) {
+        currentMenuOption++;
+        return true;
+      }
+      break;
+    default:
+      break;
   }
+
+  return false;
 }
 
-void leftMenu() {
+bool leftMenu() {
   currentMenu--;
   currentMenuOption = 1;
 
   if (currentMenu < firstMenu) {
     currentMenu = lastMenu;
   }
+
+  return true;
 }
 
-void rightMenu() {
+bool rightMenu() {
   currentMenu++;
   currentMenuOption = 1;
 
   if (currentMenu > lastMenu) {
     currentMenu = firstMenu;
   }
+
+  return true;
 }
 
 bool readMenuMovement() {
@@ -149,35 +201,27 @@ bool readMenuMovement() {
   int yValue = analogRead(yPin);
 
   if (xValue < minThreshold) {
-    lowerMenuOption();
-
     lastMenuMovementTime = millis();
 
-    return true;
+    return lowerMenuOption();
   }
 
   if (xValue > maxThreshold) {
-    upperMenuOption();
-
     lastMenuMovementTime = millis();
 
-    return true;
+    return upperMenuOption();
   }
 
   if (yValue < minThreshold) {
-    rightMenu();
-
     lastMenuMovementTime = millis();
 
-    return true;
+    return rightMenu();
   }
 
   if (yValue > maxThreshold) {
-    leftMenu();
-
     lastMenuMovementTime = millis();
 
-    return true;
+    return leftMenu();
   }
 
   return false;

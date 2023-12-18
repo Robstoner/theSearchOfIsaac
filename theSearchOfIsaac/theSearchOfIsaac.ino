@@ -10,6 +10,15 @@
 
 #include "Pins.h"
 
+// Sound variables
+const int defaultSoundDuration = 250;
+const int menuFreq = 440;
+const int winFreq = 660;
+const int loseFreq = 880;
+const int highScoreFreq = 1397;
+const int mineFreq = 330;
+const int wrongMineFreq = 1109;
+
 // Initialize matrix
 LedControl matControl = LedControl(dinPin, clockPin, loadPin, 1);
 
@@ -93,6 +102,7 @@ byte currentMenu = 1;
 byte currentMenuOption = 1;
 
 const int menuMovementTimeout = 1000;
+const int finishGameTimeout = 2500;
 unsigned long lastMenuMovementTime = 0;
 
 bool showingHighScores = false;
@@ -116,6 +126,12 @@ void joystickButtonInterrupt() {
   }
 }
 
+void playSound(int frequency, int duration) {
+  if (soundsToggle) {
+    tone(buzzerPin, frequency, duration);
+  }
+}
+
 void setup() {
   // Joystick controls and button interrupt
   pinMode(xPin, INPUT);
@@ -128,12 +144,16 @@ void setup() {
   pinMode(greenLedPin, OUTPUT);
   pinMode(blueLedPin, OUTPUT);
 
+  // Buzzer
+  pinMode(buzzerPin, OUTPUT);
+
   for (int i = 0; i < highScoreNr; ++i) {
     EEPROM.get(10 * i, highScores[i]);
   }
 
   EEPROM.get(matrixBrightnessPosition, matrixBrightness);
   EEPROM.get(LCDBrightnessPosition, LCDBrightness);
+  EEPROM.get(soundsTogglePosition, soundsToggle);
 
   // Start matrix
   matControl.shutdown(0, false);                 // turn off power saving, enables display
@@ -141,10 +161,11 @@ void setup() {
   matControl.clearDisplay(0);                    // clear screen
 
   // Start LCD
-  lcd.createChar(0, arrowUp);
-  lcd.createChar(1, arrowDown);
+  lcd.createChar((uint8_t)0, arrowUp);
+  lcd.createChar((uint8_t)1, arrowDown);
 
   lcd.begin(16, 2);  // define the lcd with 2 rows and 16 columns
+  pinMode(LCDBrightnessPin, OUTPUT);
   digitalWrite(LCDBrightnessPin, LCDBrightness);
 
 
@@ -165,6 +186,8 @@ void loop() {
     inMenu = true;
     startup = true;
     printMenu(currentMenu, currentMenuOption);
+
+    playSound(menuFreq, defaultSoundDuration);
   }
 
   if (startup) {
@@ -220,6 +243,8 @@ void gamePaused() {
     if (millis() - lastChoosingTime > choosingTimeout) {
       if (chooseLCDBrightness()) {
         lcd.setCursor(0, 1);
+        lcd.print(F("    "));
+        lcd.setCursor(0, 1);
         lcd.print(LCDBrightness);
       }
     }
@@ -249,8 +274,7 @@ void gamePaused() {
 
   if (lostGame || wonGame) {
     // Reset game / back to start menu
-    if (millis() - lastMenuMovementTime > menuMovementTimeout) {
-
+    if (millis() - lastMenuMovementTime > finishGameTimeout) {
       if (buttonPressed) {
 
         resetGame();
@@ -263,8 +287,9 @@ void gamePaused() {
 
   if (millis() - lastMenuMovementTime > menuMovementTimeout) {
     if (readMenuMovement()) {
-
       printMenu(currentMenu, currentMenuOption);
+
+      playSound(menuFreq, defaultSoundDuration);
     }
   }
 
@@ -272,6 +297,7 @@ void gamePaused() {
   if (inMenu && buttonPressed) {
     chooseMenuOption();
 
+    lastMenuMovementTime = millis();
     buttonPressed = false;
   }
 }
@@ -335,7 +361,7 @@ void printMenu(byte menu, byte option) {
 
       break;
     case 4:
-      printAboutMenu();
+      printAboutMenu(option);
 
       break;
     default:
@@ -344,6 +370,7 @@ void printMenu(byte menu, byte option) {
 }
 
 void chooseMenuOption() {
+
   if (currentMenu == 1 && currentMenuOption == 1) {
     choosingDifficulty = true;
     lcd.clear();
@@ -386,13 +413,14 @@ void chooseMenuOption() {
         break;
       case 3:
         soundsToggle = !soundsToggle;
+        EEPROM.put(soundsTogglePosition, soundsToggle);
+        printMenu(currentMenu, currentMenuOption);
 
         break;
     }
   }
 
-  if (currentMenu == 4) {
-  }
+  playSound(menuFreq, defaultSoundDuration);
 }
 
 bool checkRemainingTreasures() {
@@ -413,12 +441,16 @@ void mineTreasure() {
       score += difficulty * modifier;
       matrix[adjustedXPos][adjustedYPos] = 0;
 
+      playSound(mineFreq, defaultSoundDuration);
+
       if (!checkRemainingTreasures()) {
 
         wonGameFunction();
       }
     } else {
       shovels--;
+
+      playSound(wrongMineFreq, defaultSoundDuration);
 
       if (shovels < 0) {
         lostGameFunction();
@@ -464,6 +496,7 @@ void resetGame() {
 }
 
 void wonGameFunction() {
+  playSound(winFreq, defaultSoundDuration);
   displayImageInt64(matControl, cup);
 
   score += difficulty * (5000 / gameRunningTime);
@@ -485,6 +518,7 @@ void wonGameFunction() {
 }
 
 void lostGameFunction() {
+  playSound(loseFreq, defaultSoundDuration);
   displayImageInt64(matControl, sad_face);
 
   lcd.clear();
@@ -511,6 +545,7 @@ bool checkHighScoreAndSave() {
         highScores[j] = highScores[j - 1];
       }
 
+      playSound(highScoreFreq, defaultSoundDuration);
       EEPROM.put(10 * i, score);
       highScores[i] = score;
 
@@ -575,7 +610,7 @@ bool chooseLCDBrightness() {
     if (LCDBrightness > 0) {
       LCDBrightness--;
       EEPROM.put(LCDBrightnessPosition, LCDBrightness);
-      digitalWrite(LCDBrightnessPin, LCDBrightness);
+      analogWrite(LCDBrightnessPin, LCDBrightness);
 
       lastChoosingTime = millis();
       return true;
@@ -587,7 +622,7 @@ bool chooseLCDBrightness() {
     if (LCDBrightness < 255) {
       LCDBrightness++;
       EEPROM.put(LCDBrightnessPosition, LCDBrightness);
-      digitalWrite(LCDBrightnessPin, LCDBrightness);
+      analogWrite(LCDBrightnessPin, LCDBrightness);
 
       lastChoosingTime = millis();
       return true;
