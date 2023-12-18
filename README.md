@@ -4,6 +4,7 @@
 
 This game is made as a project for the Introduction to Robotics course at UB-FMI. It is based on the game The Binding of Isaac, on a 8x8 LED matrix and a 16x2 LCD display. The player has to find treasures while avoiding obstacles. There are multiple rooms, with multiple treasures, and the player has to find as many as they can before the time runs out, or all of them for a bonus.
 
+[![Video presentation](https://img.youtube.com/vi/xvz5uj__94M/hqdefault.jpg)](https://www.youtube.com/watch?v=xvz5uj__94M)
 ## Rules
 
 You have a number of shovels you can break until you lose. You break a shovel if you try to use it on a spot without a treasure.
@@ -46,3 +47,8 @@ The game is written in the folder [`theSearchOfIsaac`](theSearchOfIsaac). It is 
 - [`MatrixDrawings.h`](theSearchOfIsaac/MatrixDrawings) - contains the code for drawing on the LED matrix
 
 The libraries needed to compile the code are `LedControl` and `LiquidCrystal`.
+
+## Sources
+
+[Matrix led editor for the matrix drawings.](https://xantorohara.github.io/led-matrix-editor)
+Stack overflow and arduino forums for different bugs/things I didn't know how to to exactly.
