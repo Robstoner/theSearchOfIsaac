@@ -30,6 +30,8 @@ void printRunningGameInfo() {
   lcd.print(score);
   lcd.setCursor(5, 1);
   lcd.print(gameRunningTime);
+  lcd.print(F("/"));
+  lcd.print(maxGameTime);
 }
 
 // Print arrow up/down for menu

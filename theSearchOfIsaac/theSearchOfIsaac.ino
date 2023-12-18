@@ -67,6 +67,7 @@ const byte treasure = 2;
 const byte modifier = 3;
 const byte startingShovels = 5;
 
+
 const int shovelTimeout = 500;  // Timeout to control the speed of using shovels
 const int moveTimeout = 600;    // Timeout control the speed of player movement
 unsigned long lastPlayerMovedTime = 0;
@@ -83,10 +84,12 @@ bool choosingMatrixBrightness = false;
 bool choosingLCDBrightness = false;
 
 byte difficulty = 1;
+int maxGameTime = 45 * (4 - difficulty);
 int shovels = startingShovels;
 unsigned long gameRunningTime = 0;
 const int second = 1000;
 unsigned long lastSecond = 0;
+unsigned long gameStartedTime = 0;
 
 // Score variables
 unsigned int score = 0;
@@ -166,7 +169,7 @@ void setup() {
 
   lcd.begin(16, 2);  // define the lcd with 2 rows and 16 columns
   pinMode(LCDBrightnessPin, OUTPUT);
-  digitalWrite(LCDBrightnessPin, LCDBrightness);
+  analogWrite(LCDBrightnessPin, LCDBrightness);
 
 
   lcd.print(F("   Welcome to   "));
@@ -205,6 +208,7 @@ void gamePaused() {
       if (chooseDifficulty()) {
         lcd.setCursor(12, 0);
         lcd.print(difficulty);
+        maxGameTime = 45 * (4 - difficulty);
       }
     }
 
@@ -214,6 +218,7 @@ void gamePaused() {
       choosingDifficulty = false;
 
       startGame();
+      gameStartedTime = millis();
       inMenu = false;
       buttonPressed = false;
     }
@@ -303,6 +308,11 @@ void gamePaused() {
 }
 
 void gameRunning() {
+  // Check if the timer has run out
+  if (gameRunningTime > maxGameTime) {
+    lostGameFunction();
+  }
+
   // Check if the player can move (to not take too many inputs too fast)
   if (millis() - lastPlayerMovedTime > moveTimeout) {
     updatePlayerPosition();
@@ -470,6 +480,7 @@ void startGame() {
   lcd.print((String) "Shvl:" + shovels + " Score:" + score);
   lcd.setCursor(0, 1);
   lcd.print((String) "Time:" + gameRunningTime);
+  lcd.print((String) "/" + maxGameTime);
 
   lastSecond = millis();
 }
